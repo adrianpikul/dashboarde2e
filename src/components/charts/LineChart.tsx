@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useTheme } from "next-themes"
 
 type SeriesPoint = { x: number; y: number; label?: string; runKey?: string }
 export type Series = {
@@ -9,7 +10,7 @@ export type Series = {
 }
 
 export type LineChartProps = {
-  width?: number
+  width?: number // if omitted, fills container width
   height?: number
   padding?: { top: number; right: number; bottom: number; left: number }
   yDomain?: [number, number]
@@ -18,10 +19,11 @@ export type LineChartProps = {
   series: Series[]
   xLabelFormatter?: (x: number) => string
   yLabelFormatter?: (y: number) => string
+  className?: string
 }
 
 export function LineChart({
-  width = 900,
+  width,
   height = 360,
   padding = { top: 24, right: 24, bottom: 36, left: 48 },
   yDomain,
@@ -30,7 +32,31 @@ export function LineChart({
   series,
   xLabelFormatter = (x) => new Date(x).toLocaleDateString(),
   yLabelFormatter = (y) => `${y}%`,
+  className,
 }: LineChartProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [containerWidth, setContainerWidth] = useState<number | null>(null)
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === "dark"
+  useEffect(() => {
+    if (width !== undefined) return
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        const w = Math.floor(e.contentRect.width)
+        if (w && w !== containerWidth) setContainerWidth(w)
+      }
+    })
+    ro.observe(el)
+    // initial
+    setContainerWidth(Math.floor(el.getBoundingClientRect().width))
+    return () => ro.disconnect()
+  }, [width, containerWidth])
+
+  // next-themes handles theme changes; no manual observer needed
+
+  const W = width ?? containerWidth ?? 600
   const { xMin, xMax, yMin, yMax } = useMemo(() => {
     let xs: number[] = []
     let ys: number[] = []
@@ -43,8 +69,6 @@ export function LineChart({
     const [yyMin, yyMax] = yDomain ?? [Math.min(...ys), Math.max(...ys)]
     return { xMin, xMax, yMin: yyMin, yMax: yyMax }
   }, [series, yDomain])
-
-  const W = width
   const H = height
   const innerW = W - padding.left - padding.right
   const innerH = H - padding.top - padding.bottom
@@ -79,6 +103,7 @@ export function LineChart({
   const [hover, setHover] = useState<null | { x: number; y: number; text: string }>(null)
 
   return (
+    <div ref={containerRef} className={"w-full " + (className ?? "")}> 
     <svg width={W} height={H} role="img" aria-label="Passing rate over time">
       <rect x={0} y={0} width={W} height={H} fill="transparent" />
       {/* Axes */}
@@ -93,8 +118,8 @@ export function LineChart({
                 y1={y}
                 x2={W - padding.right}
                 y2={y}
-                stroke="#e5e7eb"
-                opacity={0.5}
+                stroke={isDark ? "#374151" : "#e5e7eb"}
+                opacity={isDark ? 0.6 : 0.5}
               />
               <text
                 x={padding.left - 8}
@@ -102,7 +127,7 @@ export function LineChart({
                 textAnchor="end"
                 dominantBaseline="middle"
                 fontSize={12}
-                fill="#6b7280"
+                fill={isDark ? "#9ca3af" : "#6b7280"}
               >
                 {yLabelFormatter(Number(v.toFixed(0)))}
               </text>
@@ -119,7 +144,7 @@ export function LineChart({
                 y1={padding.top}
                 x2={x}
                 y2={H - padding.bottom}
-                stroke="#f3f4f6"
+                stroke={isDark ? "#4b5563" : "#f3f4f6"}
               />
               <text
                 x={x}
@@ -127,7 +152,7 @@ export function LineChart({
                 textAnchor="middle"
                 dominantBaseline="hanging"
                 fontSize={12}
-                fill="#6b7280"
+                fill={isDark ? "#9ca3af" : "#6b7280"}
               >
                 {xLabelFormatter(v)}
               </text>
@@ -165,12 +190,13 @@ export function LineChart({
         </g>
       ))}
 
-      {/* Legend */}
-      <g transform={`translate(${padding.left}, ${padding.top - 8})`}>
+      {/* Legend (center-aligned square + text) */}
+      <g transform={`translate(${padding.left}, ${padding.top - 16})`}>
         {series.map((s, i) => (
           <g key={s.id} transform={`translate(${i * 160}, 0)`}>
-            <rect x={0} y={-12} width={12} height={12} fill={s.color} rx={2} />
-            <text x={18} y={-6} dominantBaseline="hanging" fontSize={12} fill="#374151">
+            {/* center the rect vertically at y=0 */}
+            <rect x={0} y={-6} width={12} height={12} fill={s.color} rx={2} />
+            <text x={18} y={0} dominantBaseline="middle" fontSize={12} fill={isDark ? "#e5e7eb" : "#374151"}>
               {s.label ?? s.id}
             </text>
           </g>
@@ -187,5 +213,6 @@ export function LineChart({
         </g>
       )}
     </svg>
+    </div>
   )
 }

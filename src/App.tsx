@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card"
 import { LineChart, type Series } from "./components/charts/LineChart"
-import { StackedBar } from "./components/charts/StackedBar"
+// import { StackedBar } from "./components/charts/StackedBar"
 import { TestStatusTable } from "./components/TestStatusTable"
 import { extractPassingSeries, formatDay, getRunsByKind, extractTestMatrix, type TestKind } from "./lib/data"
 import { buildMatrixCsv, downloadCsv } from "./lib/export"
@@ -8,6 +8,7 @@ import type { TestReportDto } from "./testReportDto"
 import { sampleReport } from "./mock/testReport.sample"
 import { useMemo, useState } from "react"
 import { Button } from "./components/ui/button"
+import { ThemeToggle } from "./components/ThemeToggle"
 
 const COLORS = {
   smokeTests: "#16a34a",
@@ -57,28 +58,45 @@ function App() {
           const last = runs[runs.length - 1]
           const color = k === "smokeTests" ? "text-emerald-600" : k === "uiUatTests" ? "text-blue-600" : "text-amber-600"
           const label = k === "smokeTests" ? "Smoke" : k === "uiUatTests" ? "UI UAT" : "Pricing Override"
+          const totals = runs.reduce(
+            (acc, r) => {
+              acc.passes += r.passes
+              acc.total += r.total
+              return acc
+            },
+            { passes: 0, total: 0 },
+          )
+          const overallPercent = totals.total > 0 ? Math.round((totals.passes / totals.total) * 100) : 0
           return (
             <Card key={`stat-${k}`}>
               <CardHeader className="pb-2">
                 <CardDescription>{label} pass rate</CardDescription>
                 <CardTitle className={`text-3xl ${color}`}>{last ? `${last.passPercent}%` : "-"}</CardTitle>
               </CardHeader>
-              <CardContent className="pt-0 text-xs text-slate-500">{last ? `From ${last.passes}/${last.total} tests` : "No runs yet"}</CardContent>
+              <CardContent className="pt-0 text-xs text-slate-500 space-y-1">
+                <div className="text-slate-400">
+                  {last ? `Tests date: ${formatDay(last.start)}` : "No runs yet"}
+                </div>
+                <div>{last ? `From ${last.passes}/${last.total} tests` : ""}</div>
+                <div className="text-slate-500">{runs.length ? `Overall: ${overallPercent}% across ${runs.length} runs` : ""}</div>
+              </CardContent>
             </Card>
           )
         })}
       </div>
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-1">
-            <CardTitle className="text-2xl">E2E Quality Dashboard</CardTitle>
-            <CardDescription>Trends, stability by suite, and per-test pass history</CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-1">
+              <CardTitle className="text-2xl">E2E Quality Dashboard</CardTitle>
+              <CardDescription>Trends, stability by suite, and per-test pass history</CardDescription>
+            </div>
+            <ThemeToggle />
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div>
             <LineChart
-              width={1100}
               height={380}
               yDomain={[0, 100]}
               series={series}
@@ -118,18 +136,20 @@ function App() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="overflow-x-auto">
-                  <StackedBar
-                    width={1100}
-                    height={200}
-                    data={runs.map((r) => ({
-                      key: r.key,
-                      start: r.start,
-                      total: r.total,
-                      passed: r.passes,
-                      failed: r.fails,
-                    }))}
-                    xLabel={(d) => new Date(d.start).toLocaleDateString()}
+                <div>
+                  <LineChart
+                    height={220}
+                    yDomain={[0, 100]}
+                    series={[
+                      {
+                        id: `${kind}-series`,
+                        label: `${title} pass %`,
+                        color: kind === "smokeTests" ? COLORS.smokeTests : kind === "uiUatTests" ? COLORS.uiUatTests : COLORS.pricingOverride,
+                        points: runs.map((r) => ({ x: r.start, y: r.passPercent, runKey: r.key })),
+                      },
+                    ]}
+                    xLabelFormatter={(x) => formatDay(x)}
+                    yLabelFormatter={(y) => `${y}%`}
                   />
                 </div>
 

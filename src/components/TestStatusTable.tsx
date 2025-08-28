@@ -9,7 +9,8 @@ export type TestStatusTableProps = {
 }
 
 export function TestStatusTable({ title, runs, matrix }: TestStatusTableProps) {
-  const headers = runs
+  // newest first for display
+  const headers = useMemo(() => [...runs].sort((a, b) => b.start - a.start), [runs])
   const rows = useMemo(() => {
     return Object.keys(matrix)
       .sort()
@@ -37,6 +38,9 @@ export function TestStatusTable({ title, runs, matrix }: TestStatusTableProps) {
             <TableHead className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap min-w-64">
               {title}
             </TableHead>
+            <TableHead className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap min-w-24">
+              Pass Rate
+            </TableHead>
             {headers.map((r) => (
               <TableHead
                 key={r.key}
@@ -53,7 +57,6 @@ export function TestStatusTable({ title, runs, matrix }: TestStatusTableProps) {
                 })}
               </TableHead>
             ))}
-            <TableHead className="px-3 py-2 text-right font-semibold text-slate-700">Pass Rate</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -61,6 +64,15 @@ export function TestStatusTable({ title, runs, matrix }: TestStatusTableProps) {
             <TableRow key={row.testTitle}>
               <TableCell className="px-3 py-2 text-slate-800 dark:text-slate-100 whitespace-nowrap font-medium sticky left-0 bg-white dark:bg-neutral-900">
                 {row.testTitle}
+              </TableCell>
+              <TableCell className="px-3 py-2 text-right whitespace-nowrap">
+                <span
+                  className={
+                    "font-medium " + (row.passRate > 90 ? "text-emerald-400" : row.passRate > 70 ? "text-amber-400" : "text-red-400")
+                  }
+                >
+                  {row.passRate}%
+                </span>
               </TableCell>
               {row.cells.map((p, i) => (
                 <TableCell key={i} className="px-2 py-2 text-center">
@@ -73,15 +85,6 @@ export function TestStatusTable({ title, runs, matrix }: TestStatusTableProps) {
                   )}
                 </TableCell>
               ))}
-              <TableCell className="px-3 py-2 text-right">
-                <span
-                  className={
-                    "font-medium " + (row.passRate > 90 ? "text-emerald-600" : row.passRate > 70 ? "text-amber-600" : "text-red-600")
-                  }
-                >
-                  {row.passRate}%
-                </span>
-              </TableCell>
             </TableRow>
           ))}
         </TableBody>

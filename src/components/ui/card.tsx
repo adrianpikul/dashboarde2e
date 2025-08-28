@@ -8,7 +8,7 @@ export function Card({ className, ...props }: DivProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border bg-card text-card-foreground shadow-sm border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900",
+        "rounded-xl border shadow-sm border-gray-200 bg-white text-slate-900 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100",
         className,
       )}
       {...props}
@@ -25,7 +25,7 @@ export function CardTitle({ className, ...props }: DivProps) {
 }
 
 export function CardDescription({ className, ...props }: DivProps) {
-  return <p className={cn("text-sm text-muted-foreground", className)} {...props} />
+  return <p className={cn("text-sm text-slate-500 dark:text-neutral-400", className)} {...props} />
 }
 
 export function CardContent({ className, ...props }: DivProps) {
