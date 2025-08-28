@@ -3,10 +3,11 @@ interface TestStats {
     tests: number;
     passes: number
     pending: number;
-    start: string;
+    start: string; // date in iso string
+    end: string; // Date in iso string
     duration: number
     testsRegistered: number
-    passPercent: number
+    passPercent: number // range 0-100
     pendingPercent: number;
     other: number
     hasOther: boolean
