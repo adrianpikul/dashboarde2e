@@ -1,0 +1,6 @@
+*** Begin Patch
+*** Update File: src/components/TestStatusTable.tsx
+@@
+ export function TestStatusTable({ title, runs, matrix }: TestStatusTableProps) {
+   // newest first for display
+*** End Patch

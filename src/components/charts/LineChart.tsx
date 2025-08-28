@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useTheme } from "next-themes"
 
 type SeriesPoint = { x: number; y: number; label?: string; runKey?: string }
 export type Series = {
   id: string
   label?: string
-  color: string
+  color?: string
+  // Tailwind classes per element to avoid accidental fill on lines
+  strokeClass?: string // applied to line path
+  dotClass?: string // applied to point circles (fill)
+  legendClass?: string // applied to legend swatch (rect fill)
   points: SeriesPoint[]
 }
 
@@ -36,8 +39,7 @@ export function LineChart({
 }: LineChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [containerWidth, setContainerWidth] = useState<number | null>(null)
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  
   useEffect(() => {
     if (width !== undefined) return
     const el = containerRef.current
@@ -105,7 +107,7 @@ export function LineChart({
   return (
     <div ref={containerRef} className={"w-full " + (className ?? "")}> 
     <svg width={W} height={H} role="img" aria-label="Passing rate over time">
-      <rect x={0} y={0} width={W} height={H} fill="transparent" />
+      <rect x={0} y={0} width={W} height={H} className="fill-transparent" />
       {/* Axes */}
       <g>
         {/* Y grid + labels */}
@@ -118,8 +120,7 @@ export function LineChart({
                 y1={y}
                 x2={W - padding.right}
                 y2={y}
-                stroke={isDark ? "#374151" : "#e5e7eb"}
-                opacity={isDark ? 0.6 : 0.5}
+                className="stroke-slate-200 dark:stroke-slate-600 opacity-50 dark:opacity-60"
               />
               <text
                 x={padding.left - 8}
@@ -127,7 +128,7 @@ export function LineChart({
                 textAnchor="end"
                 dominantBaseline="middle"
                 fontSize={12}
-                fill={isDark ? "#9ca3af" : "#6b7280"}
+                className="fill-slate-500 dark:fill-slate-300"
               >
                 {yLabelFormatter(Number(v.toFixed(0)))}
               </text>
@@ -144,7 +145,7 @@ export function LineChart({
                 y1={padding.top}
                 x2={x}
                 y2={H - padding.bottom}
-                stroke={isDark ? "#4b5563" : "#f3f4f6"}
+                className="stroke-slate-100 dark:stroke-slate-700"
               />
               <text
                 x={x}
@@ -152,7 +153,7 @@ export function LineChart({
                 textAnchor="middle"
                 dominantBaseline="hanging"
                 fontSize={12}
-                fill={isDark ? "#9ca3af" : "#6b7280"}
+                className="fill-slate-500 dark:fill-slate-300"
               >
                 {xLabelFormatter(v)}
               </text>
@@ -164,14 +165,19 @@ export function LineChart({
       {/* Series lines */}
       {series.map((s) => (
         <g key={s.id}>
-          <path d={buildPath(s.points)} fill="none" stroke={s.color} strokeWidth={2} />
+          {s.strokeClass ? (
+            <path d={buildPath(s.points)} fill="none" strokeWidth={2} className={s.strokeClass} />
+          ) : (
+            <path d={buildPath(s.points)} fill="none" stroke={s.color ?? '#16a34a'} strokeWidth={2} />
+          )}
           {s.points.map((p, i) => (
             <g key={i}>
               <circle
                 cx={xScale(p.x)}
                 cy={yScale(p.y)}
                 r={4}
-                fill={s.color}
+                className={s.dotClass}
+                fill={s.dotClass ? undefined : s.color}
                 onMouseEnter={() =>
                   setHover({
                     x: xScale(p.x),
@@ -195,8 +201,12 @@ export function LineChart({
         {series.map((s, i) => (
           <g key={s.id} transform={`translate(${i * 160}, 0)`}>
             {/* center the rect vertically at y=0 */}
-            <rect x={0} y={-6} width={12} height={12} fill={s.color} rx={2} />
-            <text x={18} y={0} dominantBaseline="middle" fontSize={12} fill={isDark ? "#e5e7eb" : "#374151"}>
+            {s.legendClass ? (
+              <rect x={0} y={-6} width={12} height={12} className={s.legendClass} rx={2} />
+            ) : (
+              <rect x={0} y={-6} width={12} height={12} fill={s.color ?? '#16a34a'} rx={2} />
+            )}
+            <text x={18} y={0} dominantBaseline="middle" fontSize={12} className="fill-slate-700 dark:fill-slate-200">
               {s.label ?? s.id}
             </text>
           </g>
@@ -206,8 +216,8 @@ export function LineChart({
       {/* Tooltip */}
       {hover && (
         <g transform={`translate(${hover.x + 8}, ${hover.y - 8})`}>
-          <rect x={0} y={-28} rx={4} ry={4} width={220} height={28} fill="#111827" opacity={0.9} />
-          <text x={8} y={-10} fontSize={11} fill="#f9fafb">
+          <rect x={0} y={-28} rx={4} ry={4} width={220} height={28} className="fill-slate-900 opacity-90" />
+          <text x={8} y={-10} fontSize={11} className="fill-slate-50">
             {hover.text}
           </text>
         </g>

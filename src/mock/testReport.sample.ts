@@ -1,4 +1,4 @@
-import type { TestReportDto } from "../testReportDto"
+﻿import type { TestReportDto } from "../testReportDto"
 
 function makeKey(d: Date, branch: string, hash: string) {
   const z = (n: number) => String(n).padStart(2, "0")
@@ -12,7 +12,7 @@ function randomBetween(min: number, max: number) {
 
 export const sampleReport: TestReportDto = (() => {
   const now = new Date()
-  const days = 12
+  const days = 32
   const smoke: TestReportDto["smokeTests"] = {}
   const uat: TestReportDto["uiUatTests"] = {}
   const pricing: TestReportDto["pricingOverride"] = {}
@@ -130,3 +130,10 @@ export const sampleReport: TestReportDto = (() => {
     pricingOverride: pricing,
   }
 })()
+
+
+// Simulate fetching the report from a server with a delay
+export function fetchSampleReport(): Promise<TestReportDto> {
+  return new Promise((resolve) => setTimeout(() => resolve(sampleReport), 1000))
+}
+
