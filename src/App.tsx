@@ -7,6 +7,7 @@ import { buildMatrixCsv, downloadCsv } from "./lib/export"
 import type { TestReportDto } from "./testReportDto"
 import { sampleReport } from "./mock/testReport.sample"
 import { useMemo, useState } from "react"
+import { Button } from "./components/ui/button"
 
 const COLORS = {
   smokeTests: "#16a34a",
@@ -108,16 +109,11 @@ function App() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      className="inline-flex items-center rounded-md bg-slate-900 text-white px-3 py-1.5 text-sm hover:bg-slate-700"
-                      onClick={() => {
-                        const csv = buildMatrixCsv(title, runs, matrix)
-                        const ts = runs.length ? new Date(runs[runs.length - 1].start).toISOString().slice(0, 19).replace(/[:T]/g, "-") : ""
-                        downloadCsv(`${title.replace(/\s+/g, "_")}-${ts}.csv`, csv)
-                      }}
-                    >
-                      Export CSV
-                    </button>
+                    <Button size="sm" onClick={() => {
+                      const csv = buildMatrixCsv(title, runs, matrix)
+                      const ts = runs.length ? new Date(runs[runs.length - 1].start).toISOString().slice(0, 19).replace(/[:T]/g, "-") : ""
+                      downloadCsv(`${title.replace(/\s+/g, "_")}-${ts}.csv`, csv)
+                    }}>Export CSV</Button>
                   </div>
                 </div>
               </CardHeader>
