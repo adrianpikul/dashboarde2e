@@ -1,24 +1,19 @@
 import { Button } from './ui/button'
 import { useTheme } from 'next-themes'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 
 export function ThemeToggle() {
   const { theme, setTheme, resolvedTheme } = useTheme()
-  const label = theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'
-  const isDark = (theme === 'system' ? resolvedTheme : theme) === 'dark'
+  const mode = theme === 'system' ? resolvedTheme : theme
+  const icon = mode === 'dark' ? '🌙' : '☀️'
+  const label = theme === 'system' ? 'System' : mode === 'dark' ? 'Dark' : 'Light'
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button size="sm" variant="outline" title={`Theme: ${label}`}>
-          {isDark ? '🌙' : '☀️'} <span className="ml-1 hidden sm:inline">{label}</span>
+          <span aria-hidden>{icon}</span>
+          <span className="ml-1 hidden sm:inline">{label}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
@@ -31,3 +26,4 @@ export function ThemeToggle() {
     </DropdownMenu>
   )
 }
+

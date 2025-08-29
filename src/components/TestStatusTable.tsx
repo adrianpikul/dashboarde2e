@@ -1,15 +1,19 @@
 ﻿import { useMemo, useState, useEffect, useRef, type ReactNode } from "react"
 import type { RunInfo, TestMatrix } from "../lib/data"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table"
+import { formatDay } from "../lib/data"
+import { LineChart, type Series } from "./charts/LineChart"
 
 export type TestStatusTableProps = {
   title: string
   runs: RunInfo[]
   matrix: TestMatrix
   actions?: ReactNode
+  suiteId?: "smokeTests" | "uiUatTests" | "pricingOverride"
+  lineColor?: string
 }
 
-export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTableProps) {
+export function TestStatusTable({ title, runs, matrix, actions, suiteId = "smokeTests", lineColor }: TestStatusTableProps) {
   const [filter, setFilter] = useState("")
   const [sortMode, setSortMode] = useState<"none" | "asc" | "desc">("none")
   const [showFlakyOnly, setShowFlakyOnly] = useState(false)
@@ -98,6 +102,16 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
     if (sortMode === "desc") list.sort((a, b) => b.passRate - a.passRate)
     return list
   }, [rows, filter, sortMode, showFlakyOnly, showLatestFailures, showNewFailures, showRecovered])
+
+  // Suite trend series (matches the top chart behavior but for this suite only)
+  const suiteSeries: Series[] = useMemo(() => {
+    const allowed = new Set(filteredHeaders.map((h) => h.key))
+    const pts = runs
+      .filter((r) => allowed.has(r.key))
+      .sort((a, b) => a.start - b.start)
+      .map((r) => ({ x: r.start, y: r.passPercent, runKey: r.key }))
+    return [{ id: suiteId, label: title, points: pts }]
+  }, [runs, filteredHeaders, title, suiteId])
 
   return (
     <div className="overflow-x-auto border rounded-md bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800">
@@ -217,19 +231,58 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
         </div>
         {actions && <div className="flex items-center gap-2">{actions}</div>}
       </div>
+          {suiteSeries[0].points.length > 0 && (
+            <div className="px-2 pt-2">
+          <LineChart
+            height={160}
+            yDomain={[0, 100]}
+            series={suiteSeries}
+            colors={lineColor ? { [suiteId]: lineColor } : undefined}
+            xLabelFormatter={(x) => formatDay(x)}
+            yLabelFormatter={(y) => `${y}%`}
+            tooltipLabelFormatter={(x) => {
+              const d = new Date(x)
+              const day = `${d.toLocaleString(undefined, { day: '2-digit' })} ${d.toLocaleString(undefined, { month: 'short' })}`
+              const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+              return (
+                <div>
+                  <div className="font-semibold">Run: {day} {time}</div>
+                </div>
+              )
+            }}
+            tooltipValueFormatter={(value, _seriesId, x) => {
+              const run = runs.find(r => r.start === x)
+              const detail = run ? `${run.passes}/${run.total} passed` : ''
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Pass rate</span>
+                  <span className="font-mono font-medium">{value ?? 0}%</span>
+                  {detail && <span className="text-muted-foreground">• {detail}</span>}
+                </div>
+              )
+            }}
+            xTickSplitFormatter={(x) => {
+              const d = new Date(x)
+              const day = `${d.toLocaleString(undefined, { day: '2-digit' })} ${d.toLocaleString(undefined, { month: 'short' })}`
+              const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+              return [day, time]
+            }}
+          />
+            </div>
+          )}
       <Table>
-        <TableHeader className="sticky top-0 z-10 bg-gray-50 dark:bg-neutral-900/80 backdrop-blur supports-[backdrop-filter]:bg-neutral-900/60">
+        <TableHeader className="sticky top-0 z-10 bg-white dark:bg-neutral-900">
           <TableRow>
-            <TableHead className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300 w-[350px] min-w-[350px] max-w-[350px] whitespace-normal break-words">
+            <TableHead className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-200 w-[350px] min-w-[350px] max-w-[350px] whitespace-normal break-words">
               {title}
             </TableHead>
-            <TableHead className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap min-w-24">
+            <TableHead className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap min-w-24">
               Pass Rate
             </TableHead>
             {filteredHeaders.map((r) => (
               <TableHead
                 key={r.key}
-                className="px-2 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 text-center"
+                className="px-2 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 text-center"
                 title={r.key}
               >
                 {new Date(r.start).toLocaleString(undefined, {
