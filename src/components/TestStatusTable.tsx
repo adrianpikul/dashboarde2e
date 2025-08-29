@@ -13,6 +13,9 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
   const [filter, setFilter] = useState("")
   const [sortMode, setSortMode] = useState<"none" | "asc" | "desc">("none")
   const [showFlakyOnly, setShowFlakyOnly] = useState(false)
+  const [showLatestFailures, setShowLatestFailures] = useState(false)
+  const [showNewFailures, setShowNewFailures] = useState(false)
+  const [showRecovered, setShowRecovered] = useState(false)
   const [fromDate, setFromDate] = useState("") // YYYY-MM-DD
   const [toDate, setToDate] = useState("") // YYYY-MM-DD
   const [showDateMenu, setShowDateMenu] = useState(false)
@@ -56,21 +59,30 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
         for (const s of statuses) byRun[s.runKey] = s.pass
         const total = filteredHeaders.length
         let passed = 0
-        let hasPass = false
-        let hasFail = false
         const cells = filteredHeaders.map((r) => {
           const p = byRun[r.key]
-          if (p === true) {
-            passed++
-            hasPass = true
-          } else if (p === false) {
-            hasFail = true
-          }
+          if (p === true) passed++
           return p
         })
         const passRate = Math.round((passed / Math.max(1, total)) * 100)
-        const isFlaky = hasPass && hasFail
-        return { testTitle, cells, passRate, isFlaky }
+        // Improved flaky detection: detect flips across consecutive runs.
+        // Build chronological sequence for the filtered range and check for any adjacent flip.
+        const chronological = [...filteredHeaders]
+          .sort((a, b) => a.start - b.start)
+          .map((r) => byRun[r.key])
+          .filter((v) => v !== undefined) as boolean[]
+        let hasFlip = false
+        for (let i = 0; i < chronological.length - 1; i++) {
+          if (chronological[i] !== chronological[i + 1]) { hasFlip = true; break }
+        }
+        const isFlaky = hasFlip
+        // Latest/new/recovered flags
+        const latest = chronological.length ? chronological[chronological.length - 1] : undefined
+        const prev = chronological.length > 1 ? chronological[chronological.length - 2] : undefined
+        const latestFail = latest === false
+        const newFailure = latest === false && prev === true
+        const recovered = latest === true && prev === false
+        return { testTitle, cells, passRate, isFlaky, history: chronological, latestFail, newFailure, recovered }
       })
   }, [matrix, filteredHeaders])
 
@@ -79,10 +91,13 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
       ? rows.slice()
       : rows.filter((r) => r.testTitle.toLowerCase().includes(filter.trim().toLowerCase()))
     if (showFlakyOnly) list = list.filter((r) => r.isFlaky)
+    if (showLatestFailures) list = list.filter((r) => r.latestFail)
+    if (showNewFailures) list = list.filter((r) => r.newFailure)
+    if (showRecovered) list = list.filter((r) => r.recovered)
     if (sortMode === "asc") list.sort((a, b) => a.passRate - b.passRate)
     if (sortMode === "desc") list.sort((a, b) => b.passRate - a.passRate)
     return list
-  }, [rows, filter, sortMode, showFlakyOnly])
+  }, [rows, filter, sortMode, showFlakyOnly, showLatestFailures, showNewFailures, showRecovered])
 
   return (
     <div className="overflow-x-auto border rounded-md bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800">
@@ -153,24 +168,52 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
           <button
             onClick={() => setShowFlakyOnly((v) => !v)}
             className={
-              "px-2 py-1 text-xs rounded-md border " +
+              "px-2 py-1.5 text-sm rounded-md border " +
               (showFlakyOnly
-                ? "border-amber-600 text-amber-600 bg-amber-50 dark:bg-amber-900/20"
-                : "border-gray-300 dark:border-neutral-700 text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-neutral-800")
+                ? "border-amber-600 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20"
+                : "bg-white dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 text-slate-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-neutral-800")
             }
             title="Show only flaky tests"
           >
             Flaky Only
           </button>
-          {filter && (
-            <button
-              onClick={() => setFilter("")}
-              className="px-2 py-1 text-xs rounded-md border border-gray-300 dark:border-neutral-700 text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-neutral-800"
-              title="Clear filter"
-            >
-              Clear
-            </button>
-          )}
+          {/* Quick filter chips */}
+          <button
+            onClick={() => setShowLatestFailures((v) => !v)}
+            className={
+              "px-2 py-1.5 text-sm rounded-md border " +
+              (showLatestFailures
+                ? "border-red-600 text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20"
+                : "bg-white dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 text-slate-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-neutral-800")
+            }
+            title="Show tests failing in the latest run"
+          >
+            Latest Failures
+          </button>
+          <button
+            onClick={() => setShowNewFailures((v) => !v)}
+            className={
+              "px-2 py-1.5 text-sm rounded-md border " +
+              (showNewFailures
+                ? "border-amber-600 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20"
+                : "bg-white dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 text-slate-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-neutral-800")
+            }
+            title="Show tests that flipped from pass to fail"
+          >
+            New Failures
+          </button>
+          <button
+            onClick={() => setShowRecovered((v) => !v)}
+            className={
+              "px-2 py-1.5 text-sm rounded-md border " +
+              (showRecovered
+                ? "border-emerald-600 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20"
+                : "bg-white dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 text-slate-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-neutral-800")
+            }
+            title="Show tests that recovered from a failure in the last run"
+          >
+            Recovered
+          </button>
         </div>
         {actions && <div className="flex items-center gap-2">{actions}</div>}
       </div>
@@ -206,8 +249,18 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
             <TableRow key={row.testTitle} className="border-0">
               <TableCell className="px-3 py-2 text-slate-800 dark:text-slate-100 whitespace-normal break-words font-medium sticky left-0 z-10 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 w-[350px] min-w-[350px] max-w-[350px]">
                 {row.isFlaky && (
-                  <span className="inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:ring-amber-700/40 px-1.5 py-0.5 text-[10px] font-semibold mr-2">
-                    flaky
+                  <span className="relative group inline-flex items-center mr-2">
+                    <span className="inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:ring-amber-700/40 px-1.5 py-0.5 text-[10px] font-semibold">
+                      flaky
+                    </span>
+                    <div className="pointer-events-none absolute left-0 top-full mt-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-md p-2 shadow-lg">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 mb-1">Last {row.history.length} runs</div>
+                      <div className="flex items-end gap-0.5">
+                        {row.history.map((p: boolean, i: number) => (
+                          <span key={i} className={(p ? "bg-emerald-500" : "bg-red-500") + " block w-2 h-3 rounded-sm"} />
+                        ))}
+                      </div>
+                    </div>
                   </span>
                 )}
                 {row.testTitle}

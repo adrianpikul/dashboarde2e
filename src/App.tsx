@@ -4,16 +4,17 @@ import { TestStatusTable } from "./components/TestStatusTable"
 import { extractPassingSeries, formatDay, getRunsByKind, extractTestMatrix, type TestKind, type TestMatrix } from "./lib/data"
 import { buildMatrixCsv, downloadCsv } from "./lib/export"
 import type { TestReportDto } from "./testReportDto"
-import { sampleReport } from "./mock/testReport.sample"
-import { useMemo, useState } from "react"
+import { fetchSampleReport } from "./mock/testReport.sample"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "./components/ui/button"
-import { ThemeToggle } from "./components/ThemeToggle"
 
 const COLOR_CLASSES = {
   smokeTests: { stroke: "stroke-emerald-600", dot: "fill-emerald-600", legend: "fill-emerald-600" },
   uiUatTests: { stroke: "stroke-blue-600", dot: "fill-blue-600", legend: "fill-blue-600" },
   pricingOverride: { stroke: "stroke-amber-500", dot: "fill-amber-500", legend: "fill-amber-500" },
 }
+
+const EMPTY_REPORT: TestReportDto = { smokeTests: {}, uiUatTests: {}, pricingOverride: {} }
 
 function usePassingSeries(report: TestReportDto) {
   return useMemo(() => {
@@ -28,15 +29,30 @@ function usePassingSeries(report: TestReportDto) {
 }
 
 function App() {
-  const [data] = useState<TestReportDto>(sampleReport)
-  const series = usePassingSeries(data)
-  const runsByKind = useMemo(() => getRunsByKind(data), [data])
-  const matrixByKind = useMemo(() => extractTestMatrix(data), [data])
-  const [latestFailOnly, setLatestFailOnly] = useState<Record<TestKind, boolean>>({
-    smokeTests: false,
-    uiUatTests: false,
-    pricingOverride: false,
-  })
+  const [data, setData] = useState<TestReportDto | null>(null)
+  useEffect(() => {
+    let mounted = true
+    fetchSampleReport().then((r) => {
+      if (mounted) setData(r)
+    })
+    return () => { mounted = false }
+  }, [])
+  const report = data ?? EMPTY_REPORT
+  const series = usePassingSeries(report)
+  const runsByKind = useMemo(() => getRunsByKind(report), [report])
+  const matrixByKind = useMemo(() => extractTestMatrix(report), [report])
+  // Removed per-suite latest-fail filter; covered by table quick filters
+
+  if (!data) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-slate-600">
+          <div className="animate-spin h-8 w-8 rounded-full border-2 border-slate-300 border-t-slate-500" />
+          <div className="text-sm">Loading test report…</div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-7xl p-4 space-y-6">
@@ -78,7 +94,6 @@ function App() {
               <CardTitle className="text-2xl">E2E Quality Dashboard</CardTitle>
               <CardDescription>Trends, stability by suite, and per-test pass history</CardDescription>
             </div>
-            <ThemeToggle />
           </div>
         </CardHeader>
         <CardContent>
@@ -93,19 +108,10 @@ function App() {
         {(["smokeTests", "uiUatTests", "pricingOverride"] as TestKind[]).map((kind) => {
           const runs = runsByKind[kind]
           const matrix = matrixByKind[kind]
-          const filteredMatrix: TestMatrix = useMemo(() => {
-            if (!latestFailOnly[kind]) return matrix
-            if (!runs.length) return matrix
-            const latest = runs[runs.length - 1]
-            const out: TestMatrix = {}
-            for (const [title, statuses] of Object.entries(matrix)) {
-              const st = statuses.find((s) => s.runKey === latest.key)
-              if (st && !st.pass) out[title] = statuses
-            }
-            return out
-          }, [matrix, runs, latestFailOnly[kind]])
+          const filteredMatrix: TestMatrix = matrix
           const title = kind === "smokeTests" ? "Smoke Tests" : kind === "uiUatTests" ? "UI UAT Tests" : "Pricing Override"
           const latest = runs[runs.length - 1]
+          const colors = COLOR_CLASSES[kind]
           return (
             <Card key={kind}>
               <CardHeader>
@@ -117,7 +123,7 @@ function App() {
                       {runs.length ? ` ${latest.passes}/${latest.total} passed (${latest.passPercent}%)` : ""}
                     </CardDescription>
                   </div>
-                  
+
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -129,24 +135,9 @@ function App() {
                       {
                         id: `${kind}-series`,
                         label: `${title} pass %`,
-                        strokeClass:
-                          kind === "smokeTests"
-                            ? COLOR_CLASSES.smokeTests.stroke
-                            : kind === "uiUatTests"
-                              ? COLOR_CLASSES.uiUatTests.stroke
-                              : COLOR_CLASSES.pricingOverride.stroke,
-                        dotClass:
-                          kind === "smokeTests"
-                            ? COLOR_CLASSES.smokeTests.dot
-                            : kind === "uiUatTests"
-                              ? COLOR_CLASSES.uiUatTests.dot
-                              : COLOR_CLASSES.pricingOverride.dot,
-                        legendClass:
-                          kind === "smokeTests"
-                            ? COLOR_CLASSES.smokeTests.legend
-                            : kind === "uiUatTests"
-                              ? COLOR_CLASSES.uiUatTests.legend
-                              : COLOR_CLASSES.pricingOverride.legend,
+                        strokeClass: colors.stroke,
+                        dotClass: colors.dot,
+                        legendClass: colors.legend,
                         points: runs.map((r) => ({ x: r.start, y: r.passPercent, runKey: r.key })),
                       },
                     ]}
@@ -155,21 +146,12 @@ function App() {
                   />
                 </div>
 
-                                                <TestStatusTable
+                <TestStatusTable
                   title={`Test name`}
                   runs={runs}
                   matrix={filteredMatrix}
                   actions={
                     <>
-                      <Button
-                        size="sm"
-                        variant={latestFailOnly[kind] ? "default" : "outline"}
-                        onClick={() =>
-                          setLatestFailOnly((prev) => ({ ...prev, [kind]: !prev[kind] }))
-                        }
-                      >
-                        {latestFailOnly[kind] ? "Show All" : "Latest Failures"}
-                      </Button>
                       <Button
                         size="sm"
                         onClick={() => {
@@ -185,7 +167,7 @@ function App() {
                     </>
                   }
                 />
-</CardContent>
+              </CardContent>
             </Card>
           )
         })}
