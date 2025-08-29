@@ -1,46 +1,36 @@
 ﻿import { useMemo, useState, useEffect, useRef, type ReactNode } from "react"
 import type { RunInfo, TestMatrix } from "../lib/data"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table"
+import { formatDay } from "../lib/data"
+import { splitDayTime, tooltipRunLabel } from "../lib/format"
+import { LineChart, type Series } from "./charts/LineChart"
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover"
+import { Filter as FilterIcon } from "lucide-react"
+import { useOutsideToggle } from "../hooks/useOutsideToggle"
 
 export type TestStatusTableProps = {
   title: string
   runs: RunInfo[]
   matrix: TestMatrix
   actions?: ReactNode
+  suiteId?: "smokeTests" | "uiUatTests" | "pricingOverride"
+  lineColor?: string
 }
 
-export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTableProps) {
+export function TestStatusTable({ title, runs, matrix, actions, suiteId = "smokeTests", lineColor }: TestStatusTableProps) {
+  // no-op hooks to satisfy build after refactor of outside click handling
+  useEffect(() => { }, [])
+  useRef<HTMLDivElement | null>(null)
   const [filter, setFilter] = useState("")
-  const [sortMode, setSortMode] = useState<"none" | "asc" | "desc">("none")
+  const [sortMode, setSortMode] = useState<"none" | "asc" | "desc">("asc")
   const [showFlakyOnly, setShowFlakyOnly] = useState(false)
   const [showLatestFailures, setShowLatestFailures] = useState(false)
   const [showNewFailures, setShowNewFailures] = useState(false)
   const [showRecovered, setShowRecovered] = useState(false)
   const [fromDate, setFromDate] = useState("") // YYYY-MM-DD
   const [toDate, setToDate] = useState("") // YYYY-MM-DD
-  const [showDateMenu, setShowDateMenu] = useState(false)
-  const dateMenuRef = useRef<HTMLDivElement | null>(null)
-  const dateButtonRef = useRef<HTMLButtonElement | null>(null)
-
-  useEffect(() => {
-    if (!showDateMenu) return
-    const onDown = (e: MouseEvent) => {
-      const menuEl = dateMenuRef.current
-      const btnEl = dateButtonRef.current
-      const target = e.target as Node | null
-      if (!menuEl || !target) return
-      if (menuEl.contains(target)) return
-      if (btnEl && btnEl.contains(target)) return
-      setShowDateMenu(false)
-    }
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowDateMenu(false) }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [showDateMenu])
+  const { open: showDateMenu, setOpen: setShowDateMenu, menuRef: dateMenuRef, triggerRef: dateButtonRef } = useOutsideToggle(false)
+  const [colFilters, setColFilters] = useState<Record<string, "all" | "pass" | "fail" | "missing">>({})
 
   // newest first for display
   const headers = useMemo(() => [...runs].sort((a, b) => b.start - a.start), [runs])
@@ -94,10 +84,31 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
     if (showLatestFailures) list = list.filter((r) => r.latestFail)
     if (showNewFailures) list = list.filter((r) => r.newFailure)
     if (showRecovered) list = list.filter((r) => r.recovered)
+    const active = filteredHeaders
+      .map((h, i) => ({ i, key: h.key, mode: colFilters[h.key] ?? "all" }))
+      .filter((f) => f.mode !== "all")
+    if (active.length) {
+      list = list.filter((row) =>
+        active.every((f) => {
+          const v = row.cells[f.i]
+          return f.mode === "pass" ? v === true : f.mode === "fail" ? v === false : v === undefined
+        }),
+      )
+    }
     if (sortMode === "asc") list.sort((a, b) => a.passRate - b.passRate)
     if (sortMode === "desc") list.sort((a, b) => b.passRate - a.passRate)
     return list
-  }, [rows, filter, sortMode, showFlakyOnly, showLatestFailures, showNewFailures, showRecovered])
+  }, [rows, filter, sortMode, showFlakyOnly, showLatestFailures, showNewFailures, showRecovered, filteredHeaders, colFilters])
+
+  // Suite trend series (matches the top chart behavior but for this suite only)
+  const suiteSeries: Series[] = useMemo(() => {
+    const allowed = new Set(filteredHeaders.map((h) => h.key))
+    const pts = runs
+      .filter((r) => allowed.has(r.key))
+      .sort((a, b) => a.start - b.start)
+      .map((r) => ({ x: r.start, y: r.passPercent, runKey: r.key }))
+    return [{ id: suiteId, label: title, points: pts }]
+  }, [runs, filteredHeaders, title, suiteId])
 
   return (
     <div className="overflow-x-auto border rounded-md bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800">
@@ -217,39 +228,103 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
         </div>
         {actions && <div className="flex items-center gap-2">{actions}</div>}
       </div>
+      {suiteSeries[0].points.length > 0 && (
+        <div className="px-2 pt-2">
+          <LineChart
+            height={160}
+            yDomain={[0, 100]}
+            series={suiteSeries}
+            colors={lineColor ? { [suiteId]: lineColor } : undefined}
+            xLabelFormatter={(x) => formatDay(x)}
+            yLabelFormatter={(y) => `${y}%`}
+            tooltipLabelFormatter={(x) => {
+              return <div className="font-semibold">{tooltipRunLabel(x as number)}</div>
+            }}
+            tooltipValueFormatter={(value, _seriesId, x) => {
+              const run = runs.find(r => r.start === x)
+              const detail = run ? `${run.passes}/${run.total} passed` : ''
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Pass rate</span>
+                  <span className="font-mono font-medium">{value ?? 0}%</span>
+                  {detail && <span className="text-muted-foreground">• {detail}</span>}
+                </div>
+              )
+            }}
+            xTickSplitFormatter={(x) => {
+              return splitDayTime(x as number)
+            }}
+          />
+        </div>
+      )}
       <Table>
-        <TableHeader className="sticky top-0 z-10 bg-gray-50 dark:bg-neutral-900/80 backdrop-blur supports-[backdrop-filter]:bg-neutral-900/60">
+        <TableHeader className="sticky top-0 z-10 bg-white dark:bg-neutral-900">
           <TableRow>
-            <TableHead className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300 w-[350px] min-w-[350px] max-w-[350px] whitespace-normal break-words">
+            <TableHead className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-200 w-[350px] min-w-[350px] max-w-[350px] whitespace-normal break-words">
               {title}
             </TableHead>
-            <TableHead className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap min-w-24">
+            <TableHead className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap min-w-24">
               Pass Rate
             </TableHead>
-            {filteredHeaders.map((r) => (
-              <TableHead
-                key={r.key}
-                className="px-2 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 text-center"
-                title={r.key}
-              >
-                {new Date(r.start).toLocaleString(undefined, {
-                  year: "numeric",
-                  month: "2-digit",
-                  day: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                })}
-              </TableHead>
-            ))}
+            {filteredHeaders.map((r, idx) => {
+              const isActive = (colFilters[r.key] ?? "all") !== "all"
+              const d = new Date(r.start)
+              const pad = (n: number) => String(n).padStart(2, "0")
+              const dayStr = `${pad(d.getDate())}.${pad(d.getMonth() + 1)}`
+              const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+              const tooltip = `${dayStr} ${timeStr}`
+              return (
+                <TableHead key={r.key} className="px-2 py-2 text-xs text-center">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${isActive
+                            ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300"
+                            : "text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-neutral-800"
+                          }`}
+                        title={`Filter column ${idx + 1}: ${tooltip}`}
+                      >
+                        <FilterIcon className="w-3.5 h-3.5" />
+                        <span className="flex flex-col leading-tight items-end max-w-[130px]">
+                          <span className="truncate" title={tooltip}>{dayStr}</span>
+                          <span className="truncate" title={tooltip}>{timeStr}</span>
+                        </span>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="center" className="w-44 p-2">
+                      <div className="text-xs font-semibold mb-2">Filter this run</div>
+                      {(["all", "pass", "fail", "missing"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => setColFilters((prev) => ({ ...prev, [r.key]: mode }))}
+                          className={`w-full text-left px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 text-sm ${(colFilters[r.key] ?? "all") === mode ? "bg-gray-100 dark:bg-neutral-800" : ""
+                            }`}
+                        >
+                          {mode === "all" ? "All" : mode === "pass" ? "Pass only" : mode === "fail" ? "Fail only" : "Missing only"}
+                        </button>
+                      ))}
+                      <div className="mt-2 text-right">
+                        <button
+                          className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 hover:bg-gray-50 dark:hover:bg-neutral-800"
+                          onClick={() => setColFilters((prev) => ({ ...prev, [r.key]: "all" }))}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </TableHead>
+              )
+            })}
           </TableRow>
         </TableHeader>
         <TableBody className="[&_td]:border-b [&_td]:border-gray-200 dark:[&_td]:border-neutral-800">
           {displayRows.map((row) => (
             <TableRow key={row.testTitle} className="border-0">
               <TableCell className="px-3 py-2 text-slate-800 dark:text-slate-100 whitespace-normal break-words font-medium sticky left-0 z-10 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 w-[350px] min-w-[350px] max-w-[350px]">
+                {row.testTitle}
                 {row.isFlaky && (
-                  <span className="relative group inline-flex items-center mr-2">
+                  <span className="relative group inline-flex items-center pl-2 mr-2">
                     <span className="inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:ring-amber-700/40 px-1.5 py-0.5 text-[10px] font-semibold">
                       flaky
                     </span>
@@ -263,7 +338,7 @@ export function TestStatusTable({ title, runs, matrix, actions }: TestStatusTabl
                     </div>
                   </span>
                 )}
-                {row.testTitle}
+
               </TableCell>
               <TableCell className="px-3 py-2 text-right whitespace-nowrap">
                 <span
