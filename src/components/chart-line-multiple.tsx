@@ -12,9 +12,10 @@ type Props = {
   height?: number
   // Optional two-line ticks: return [line1, line2]
   xTickSplitFormatter?: (x: number) => [string, string]
+  yTickFormatter?: (y: number) => string
 }
 
-export default function Component({ data, config, xKey, yDomain, xLabelFormatter, height = 380, xTickSplitFormatter }: Props) {
+export default function Component({ data, config, xKey, yDomain, xLabelFormatter, height = 380, xTickSplitFormatter, yTickFormatter }: Props) {
   const seriesKeys = Object.keys(config)
   const fallbackPalette = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6"]
 
@@ -48,7 +49,7 @@ export default function Component({ data, config, xKey, yDomain, xLabelFormatter
             tickFormatter={(value: number) => (xLabelFormatter ? xLabelFormatter(value) : new Date(value).toLocaleDateString())}
           />
         )}
-        <YAxis domain={yDomain as any} width={32} />
+        <YAxis domain={yDomain as any} width={40} tickFormatter={yTickFormatter as any} />
         <ChartTooltip
           cursor={false}
           content={<ChartTooltipContent indicator="line" />}

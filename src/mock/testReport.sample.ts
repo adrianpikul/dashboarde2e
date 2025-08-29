@@ -19,7 +19,8 @@ export const sampleReport: TestReportDto = (() => {
 
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-    const runsPerDay = 1
+    // Up to 2 runs per day per suite type
+    const runsPerDay = randomBetween(1, 2)
     for (let r = 0; r < runsPerDay; r++) {
       const start = new Date(d.getTime() + r * 2 * 60 * 60 * 1000)
       const end = new Date(start.getTime() + 30 * 60 * 1000)
